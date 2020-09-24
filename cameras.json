@@ -1,0 +1,11 @@
+[
+        {"name":"Kitchen",
+        "stream":"rtsp://USERNAME:PASS@IP_ADDRESS/Streaming/channels/102"
+        },
+        {"name":"Balcony",
+        "stream":"rtsp:///USERNAME:PASS@IP_ADDRESS/Streaming/channels/202"
+        },
+        {"name":"Garage",
+        "stream":"rtsp://USERNAME:PASS@IP_ADDRESS/Streaming/channels/302"
+        }
+]
