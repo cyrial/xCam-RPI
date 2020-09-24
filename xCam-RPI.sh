@@ -1,11 +1,12 @@
 #!/bin/bash
 
 ### CONFIGURATION
-max_x=4095
-max_y=4095
+max_x=4095 # This will be used if script won't detect maximum ABS_X
+max_y=4095 # This will be used if script won't detect maximum ABS_Y
 
 resolution_x=800
 resolution_y=480
+
 ### END OF CONFIGURATION
 
 if [[ $EUID -ne 0 ]]; then
@@ -13,6 +14,14 @@ if [[ $EUID -ne 0 ]]; then
    exit 0
 fi
 
+autodetected_screen=$(cat /proc/bus/input/devices | awk '/screen/{for(a=0;a>=0;a++){getline;{if(/mouse/==1){ print $NF;exit 0;}}}}'|cut -d " " -f 3)
+detected_max_x=$(evtest /dev/input/${autodetected_screen}|grep Max|awk {'print $2'}|tr "\n" ","|cut -d ',' -f 1& sleep 1; killall -9 evtest)
+detected_max_y=$(evtest /dev/input/${autodetected_screen}|grep Max|awk {'print $2'}|tr "\n" ","|cut -d ',' -f 2& sleep 1; killall -9 evtest)
+
+if [[ ${detected_max_y} != 0 && ${detected_max_x} != 0 ]]; then
+        max_x=${detected_max_x}
+        max_y=${detected_max_y}
+fi
 
 cameras=$(jq '. | length' cameras.json)
 cameras_x=$(echo "sqrt(${cameras})" | bc)
@@ -86,7 +95,7 @@ function runStreamFullScreen(){
                 y_e=$(cat /tmp/xCam-RPI.cameras | head -n ${cam_count}|tail -n1|cut -d " " -f 4)
 
                 if [[ ${x} > ${x_s} && ${x} < ${x_e} && ${y} > ${y_s} && ${y} < ${y_e} ]]; then
-						omxplayer --layer 101 --no-keys --no-osd --avdict rtsp_transport:tcp --win "0 0 ${resolution_x} ${resolution_y}" ${stream} --live -n -1 --timeout 30 --dbus_name org.mpris.MediaPlayer2.omxplayer.${name} &
+                        omxplayer --layer 101 --no-keys --no-osd --avdict rtsp_transport:tcp --win "0 0 ${resolution_x} ${resolution_y}" ${stream} --live -n -1 --timeout 30 --dbus_name org.mpris.MediaPlayer2.omxplayer.${name} &
                         touch /tmp/xCam-RPI.video_running
                 fi
                 cam_count=$((${cam_count}+1))
@@ -95,10 +104,11 @@ function runStreamFullScreen(){
 
 checkCommand jq
 checkCommand omxplayer
+checkCommand evtest
 runStream
 
 while true; do
-        timeout 0.3s evtest /dev/input/event4 > /tmp/xCam-RPI.touch_test
+        timeout 0.4s evtest /dev/input/event4 > /tmp/xCam-RPI.touch_test
         grep "SYN_REPORT" /tmp/xCam-RPI.touch_test
 
         if [[ $? == 0 ]]; then
@@ -111,7 +121,6 @@ while true; do
                         touched_y=$(grep -m 3 'type 3' /tmp/xCam-RPI.touch_test|grep ABS_Y |awk {'print $11'})
                         x=$( bc -l <<< ${touched_x}/${max_x}*${resolution_x}|cut -d '.' -f 1 )
                         y=$( bc -l <<< ${touched_y}/${max_y}*${resolution_y}|cut -d '.' -f 1 )
-
                         runStreamFullScreen ${x} ${y}
                 fi
         fi
