@@ -1,14 +1,19 @@
 #!/bin/bash
-version="1.0"
+version="1.1"
 
 ### CONFIGURATION
 max_x=4095 # This will be used if script won't detect maximum ABS_X
 max_y=4095 # This will be used if script won't detect maximum ABS_Y
 
-resolution_x=800
-resolution_y=480
+touch_file='/tmp/xCam-RPI.touch_test'
+video_file='/tmp/xCam-RPI.video_running'
+cameras_file='/tmp/xCam-RPI.cameras'
 
 ### END OF CONFIGURATION
+
+resolution=$(fbset |grep 'mode "' |cut -d '"' -f 2)
+resolution_x=$(echo ${resolution}|cut -d 'x' -f 1)
+resolution_y=$(echo ${resolution}|cut -d 'x' -f 2)
 
 if [[ $EUID -ne 0 ]]; then
    echo "ERROR: xCam-RPI works only under root"
@@ -19,8 +24,22 @@ clear
 echo "=> xCam-RPI ${version} <="
 echo
 
+function checkCommand(){
+        command=${1}
+        echo "-> Checking if ${command} is available"
+        if ! $(command -v ${command} &> /dev/null); then
+                echo "-> MISSING PACKAGE: ${command} package needs to be installed"
+                exit 1
+        fi
+}
+
+checkCommand jq
+checkCommand omxplayer
+checkCommand evtest
+checkCommand bc
+
 ### TRYING TO AUTODETECT MAX_X MAX_Y SETTINGS FOR ABS
-autodetected_screen=$(cat /proc/bus/input/devices | awk '/screen/{for(a=0;a>=0;a++){getline;{if(/mouse/==1){ print $NF;exit 0;}}}}'|cut -d " " -f 3)
+autodetected_screen=$(cat /proc/bus/input/devices | awk '/screen|WaveShare/{for(a=0;a>=0;a++){getline;{if(/mouse/){ print $NF;exit 0;}}}}')
 detected_max_x=$(evtest /dev/input/${autodetected_screen}|grep Max|awk {'print $2'}|tr "\n" ","|cut -d ',' -f 1& sleep 1; killall -9 evtest)
 detected_max_y=$(evtest /dev/input/${autodetected_screen}|grep Max|awk {'print $2'}|tr "\n" ","|cut -d ',' -f 2& sleep 1; killall -9 evtest)
 
@@ -47,15 +66,6 @@ cameras_x=$(echo "sqrt(${cameras})" | bc)
 camera_width=$((${resolution_x} / ${cameras_x}))
 camera_height=$((${resolution_y} / ${cameras_y}))
 
-function checkCommand(){
-        command=${1}
-        echo "-> Checking if ${command} is available"
-        if ! $(command -v ${command} &> /dev/null); then
-                echo "-> MISSING PACKAGE: ${command} package needs to be installed"
-                exit 1
-        fi
-}
-
 function runStream(){
         xs=0
         xe=${camera_width}
@@ -64,8 +74,8 @@ function runStream(){
 
         echo "-> Starting streams..."
 
-        rm /tmp/xCam-RPI.cameras || echo "-> No old data for cameras to be removed."
-        touch /tmp/xCam-RPI.cameras || echo "-> Can't create /tmp/xCam-RPI.cameras. Make sure you have sufficent priviledges"
+        rm ${cameras_file} || echo "-> No old data for cameras to be removed."
+        touch ${cameras_file} || echo "-> Can't create /tmp/xCam-RPI.cameras. Make sure you have sufficent priviledges"
 
         current_cam=0
         cam_count=0
@@ -81,7 +91,7 @@ function runStream(){
                         current_cam=0
                 fi
 
-                echo "${xs} ${ys} ${xe} ${ye}" >> /tmp/xCam-RPI.cameras
+                echo "${xs} ${ys} ${xe} ${ye}" >> ${cameras_file}
                 omxplayer --no-keys --no-osd --avdict rtsp_transport:tcp --win "${xs} ${ys} ${xe} ${ye}" ${stream} --live -n -1 --timeout 30 --dbus_name org.mpris.MediaPlayer2.omxplayer.${name} > /dev/null 2>&1 &
                 xs=$((${xs} + ${camera_width}))
                 xe=$((${xe} + ${camera_width}))
@@ -104,37 +114,34 @@ function runStreamFullScreen(){
         jq -c '.[]' cameras.json | while read i; do
                 stream=$(echo ${i} | jq -r '.stream')
                 name=$(echo ${i} | jq -r '.name')
-                x_s=$(cat /tmp/xCam-RPI.cameras | head -n ${cam_count}|tail -n1|cut -d " " -f 1)
-                y_s=$(cat /tmp/xCam-RPI.cameras | head -n ${cam_count}|tail -n1|cut -d " " -f 2)
-                x_e=$(cat /tmp/xCam-RPI.cameras | head -n ${cam_count}|tail -n1|cut -d " " -f 3)
-                y_e=$(cat /tmp/xCam-RPI.cameras | head -n ${cam_count}|tail -n1|cut -d " " -f 4)
+                x_s=$(cat ${cameras_file} | head -n ${cam_count}|tail -n1|cut -d " " -f 1)
+                y_s=$(cat ${cameras_file} | head -n ${cam_count}|tail -n1|cut -d " " -f 2)
+                x_e=$(cat ${cameras_file} | head -n ${cam_count}|tail -n1|cut -d " " -f 3)
+                y_e=$(cat ${cameras_file} | head -n ${cam_count}|tail -n1|cut -d " " -f 4)
 
                 if [[ ${x} > ${x_s} && ${x} < ${x_e} && ${y} > ${y_s} && ${y} < ${y_e} ]]; then
                         omxplayer --layer 101 --no-keys --no-osd --avdict rtsp_transport:tcp --win "0 0 ${resolution_x} ${resolution_y}" ${stream} --live -n -1 --timeout 30 --dbus_name org.mpris.MediaPlayer2.omxplayer.${name} > /dev/null 2>&1 &
-                        touch /tmp/xCam-RPI.video_running
+                        touch ${video_file}
                 fi
                 cam_count=$((${cam_count}+1))
         done
 }
 
-checkCommand jq
-checkCommand omxplayer
-checkCommand evtest
 runStream
 
 if [[ ${1} != '--notouch' ]]; then
         while true; do
-                timeout 0.3s evtest /dev/input/event4 > /tmp/xCam-RPI.touch_test
-                grep "SYN_REPORT" /tmp/xCam-RPI.touch_test
+                timeout 0.3s evtest /dev/input/${autodetected_screen} > ${touch_file}
+                grep "SYN_REPORT" ${touch_file}
 
                 if [[ $? == 0 ]]; then
-
-                        if [[ -f /tmp/xCam-RPI.video_running ]]; then
-                                kill -9 $(ps aux|grep omxplayer|grep layer|grep 101|awk {'print $2'})
-                                rm /tmp/xCam-RPI.video_running || "No video running at the moment"
+                        if [[ -f ${video_file} ]]; then
+                                kill -9 $(ps aux|grep omxplayer|grep layer|grep 101|awk {'print $2'}) || echo "No process to kill"
+                                rm ${video_file} || echo "No video running at the moment"
                         else
-                                touched_x=$(grep -m 3 'type 3' /tmp/xCam-RPI.touch_test|grep ABS_X |awk {'print $11'})
-                                touched_y=$(grep -m 3 'type 3' /tmp/xCam-RPI.touch_test|grep ABS_Y |awk {'print $11'})
+
+                                touched_x=$(egrep 'ABS_X|ABS_Y' ${touch_file} | grep -m 3 'type 3' | grep ABS_X | awk {'print $11'})
+                                touched_y=$(egrep 'ABS_X|ABS_Y' ${touch_file} | grep -m 3 'type 3' | grep ABS_Y | awk {'print $11'})
                                 x=$( bc -l <<< ${touched_x}/${max_x}*${resolution_x}|cut -d '.' -f 1 )
                                 y=$( bc -l <<< ${touched_y}/${max_y}*${resolution_y}|cut -d '.' -f 1 )
                                 runStreamFullScreen ${x} ${y}
