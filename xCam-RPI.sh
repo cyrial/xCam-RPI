@@ -140,8 +140,8 @@ if [[ ${1} != '--notouch' ]]; then
                                 rm ${video_file} || echo "No video running at the moment"
                         else
 
-                                touched_x=$(egrep 'ABS_X|ABS_Y' ${touch_file} | grep -m 3 'type 3' | grep ABS_X | awk {'print $11'})
-                                touched_y=$(egrep 'ABS_X|ABS_Y' ${touch_file} | grep -m 3 'type 3' | grep ABS_Y | awk {'print $11'})
+                                touched_x=$(egrep 'ABS_X|ABS_Y' ${touch_file} | grep -m 3 'type 3' | grep -m 1 'ABS_X' | awk {'print $11'})
+                                touched_y=$(egrep 'ABS_X|ABS_Y' ${touch_file} | grep -m 3 'type 3' | grep -m 1 'ABS_Y' | awk {'print $11'})
                                 x=$( bc -l <<< ${touched_x}/${max_x}*${resolution_x}|cut -d '.' -f 1 )
                                 y=$( bc -l <<< ${touched_y}/${max_y}*${resolution_y}|cut -d '.' -f 1 )
                                 runStreamFullScreen ${x} ${y}
