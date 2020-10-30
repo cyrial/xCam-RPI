@@ -9,6 +9,8 @@ touch_file='/tmp/xCam-RPI.touch_test'
 video_file='/tmp/xCam-RPI.video_running'
 cameras_file='/tmp/xCam-RPI.cameras'
 
+rm -f ${touch_file} ${video_file} ${cameras_file}
+
 ### END OF CONFIGURATION
 
 resolution=$(fbset |grep 'mode "' |cut -d '"' -f 2)
@@ -119,7 +121,7 @@ function runStreamFullScreen(){
                 x_e=$(cat ${cameras_file} | head -n ${cam_count}|tail -n1|cut -d " " -f 3)
                 y_e=$(cat ${cameras_file} | head -n ${cam_count}|tail -n1|cut -d " " -f 4)
 
-                if [[ ${x} > ${x_s} && ${x} < ${x_e} && ${y} > ${y_s} && ${y} < ${y_e} ]]; then
+                if (( ${x} > ${x_s} && ${x} < ${x_e} && ${y} > ${y_s} && ${y} < ${y_e} )); then
                         omxplayer --layer 101 --no-keys --no-osd --avdict rtsp_transport:tcp --win "0 0 ${resolution_x} ${resolution_y}" ${stream} --live -n -1 --timeout 30 --dbus_name org.mpris.MediaPlayer2.omxplayer.${name} > /dev/null 2>&1 &
                         touch ${video_file}
                 fi
