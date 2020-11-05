@@ -1,4 +1,15 @@
 #!/bin/bash
+
+# Restart views if some cameras went offline
+if (( $(ps aux|grep xCam-RPI|grep -v grep | wc -l) > 0 )); then
+        if (( $(ps aux|grep omxplayer.bin|grep -v grep|wc -l) < $(cat cameras.json|grep stream|wc -l) )); then
+                killall -9 omxplayer.bin
+                kill $(pidof -x -o $$ $0) 2>/dev/null
+        else
+                exit 0
+        fi
+fi
+
 version="1.1"
 
 ### CONFIGURATION

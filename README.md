@@ -12,3 +12,14 @@ Software for viewing multiple IP camera streams on RPI using only console.
 5. Zooming camera after touch may take 2-3 seconds, that's normal, nothing to worry about.
 
 6. Have fun, report bugs!
+
+### How to configure crontab to automatically restart views in case of one will go offline + start xCam-RPI with system start.
+### Remember to set proper directory where xCam-RPI resides.
+
+@reboot sleep 5; cd /home/pi/xCam-RPI; ./xCam-RPI.sh
+* * * * * cd /home/pi/xCam-RPI; ./xCam-RPI.sh
+* * * * * sleep 10; cd /home/pi/xCam-RPI; ./xCam-RPI.sh
+* * * * * sleep 20; cd /home/pi/xCam-RPI; ./xCam-RPI.sh
+* * * * * sleep 30; cd /home/pi/xCam-RPI; ./xCam-RPI.sh
+* * * * * sleep 40; cd /home/pi/xCam-RPI; ./xCam-RPI.sh
+* * * * * sleep 50; cd /home/pi/xCam-RPI; ./xCam-RPI.sh
